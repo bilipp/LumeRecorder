@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.4-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install ffmpeg (integration test)
         run: apt-get update && apt-get install -y --no-install-recommends ffmpeg
       - name: Server build & test
@@ -29,7 +29,7 @@ jobs:
     name: Kit on Apple platforms
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Kit tests (macOS)
         working-directory: Kit
         run: swift test
@@ -48,8 +48,18 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      # Two Swift toolchain images plus the build cache overflow the runner's
+      # ~14 GB free disk; drop preinstalled SDKs this job never uses.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+      # arm64 is emulated (QEMU) and slow, so the multi-arch image is only
+      # built for release tags; pushes and PRs build amd64 to prove it builds.
       - uses: docker/setup-qemu-action@v3
+        if: startsWith(github.ref, 'refs/tags/v')
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         if: startsWith(github.ref, 'refs/tags/v')
@@ -71,7 +81,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
