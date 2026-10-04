@@ -22,7 +22,7 @@ xml_escape() {
 }
 
 start_avahi() {
-    server_id="$(setpriv --reuid=lume --regid=lume --init-groups "$BIN" server-id --data-dir "$DATA_DIR")"
+    server_id="$(run_as "$BIN" server-id --data-dir "$DATA_DIR")"
     version="$("$BIN" --version)"
     if [ -n "${SERVER_NAME:-}" ]; then
         name="$(xml_escape "$SERVER_NAME")"
@@ -62,15 +62,61 @@ case "${1:-serve}" in
 esac
 [ $# -eq 0 ] && set -- serve
 
+# The identity the server runs as, decided below. `run_as` runs a command as it.
+RUN_UID=""
+RUN_GID=""
+run_as() {
+    if [ "$RUN_UID" = "0" ]; then
+        "$@"
+    elif [ "$RUN_UID" = "$(id -u lume)" ]; then
+        setpriv --reuid=lume --regid=lume --init-groups "$@"
+    else
+        setpriv --reuid="$RUN_UID" --regid="$RUN_GID" --clear-groups "$@"
+    fi
+}
+
+can_write() { # uid gid
+    if [ "$1" = "0" ]; then
+        test -w "$DATA_DIR"
+    else
+        setpriv --reuid="$1" --regid="$2" --clear-groups test -w "$DATA_DIR"
+    fi
+}
+
 if [ "$(id -u)" = "0" ]; then
     mkdir -p "$DATA_DIR"
-    if [ "$(stat -c %u "$DATA_DIR")" != "$(id -u lume)" ]; then
-        chown -R lume:lume "$DATA_DIR"
+    lume_uid="$(id -u lume)"
+    lume_gid="$(id -g lume)"
+    # Best effort: bind mounts shared from a VM (Docker Desktop, Apple
+    # `container`) refuse chown, which must not stop the container.
+    if [ "$(stat -c %u "$DATA_DIR")" != "$lume_uid" ]; then
+        chown -R lume:lume "$DATA_DIR" 2>/dev/null || true
+    fi
+    owner_uid="$(stat -c %u "$DATA_DIR")"
+    owner_gid="$(stat -c %g "$DATA_DIR")"
+    if can_write "$lume_uid" "$lume_gid"; then
+        RUN_UID="$lume_uid"
+        RUN_GID="$lume_gid"
+    elif [ "$owner_uid" != "0" ] && can_write "$owner_uid" "$owner_gid"; then
+        echo "Data: ${DATA_DIR} can't be handed to the lume user; running as its owner (uid ${owner_uid})"
+        RUN_UID="$owner_uid"
+        RUN_GID="$owner_gid"
+    else
+        echo "Data: ${DATA_DIR} is only writable as root; running the server as root" >&2
+        RUN_UID=0
+        RUN_GID=0
     fi
     if bonjour_enabled; then
         start_avahi
     fi
-    exec setpriv --reuid=lume --regid=lume --init-groups "$BIN" "$@"
+    # exec, so tini's signals (docker stop) reach the server directly.
+    if [ "$RUN_UID" = "0" ]; then
+        exec "$BIN" "$@"
+    elif [ "$RUN_UID" = "$lume_uid" ]; then
+        exec setpriv --reuid=lume --regid=lume --init-groups "$BIN" "$@"
+    else
+        exec setpriv --reuid="$RUN_UID" --regid="$RUN_GID" --clear-groups "$BIN" "$@"
+    fi
 fi
 
 exec "$BIN" "$@"

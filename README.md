@@ -38,6 +38,40 @@ docker logs lume-recorder | grep "Pairing code"
 
 Or build from this checkout: `docker build -t lumerecorder .`
 
+### docker run
+
+```bash
+docker build -t lumerecorder .
+docker run -d --name lume-recorder --restart unless-stopped \
+  --network host -v "$PWD/data:/data" lumerecorder
+docker exec lume-recorder lume-recorder pair
+```
+
+On Docker Desktop (macOS/Windows) host networking can't carry Bonjour: publish
+the port instead (`-p 8090:8090 -e BONJOUR=0`) and add the server in Lume by
+address.
+
+### Apple `container` (macOS on Apple silicon)
+
+```bash
+container system start
+container build -t lumerecorder:dev .
+mkdir -p ~/LumeRecorder-data
+container run -d --name lume-recorder \
+  -p 0.0.0.0:8090:8090 -v ~/LumeRecorder-data:/data \
+  -e BONJOUR=0 lumerecorder:dev
+container exec lume-recorder lume-recorder pair
+```
+
+The container runs in a VM, so Bonjour doesn't reach your network: in Lume use
+**Settings → Recording Server → Enter Address Manually** with your Mac's IP and
+port 8090.
+
+The server runs as the unprivileged `lume` user. The entrypoint hands `/data`
+to that user when it can; shared host folders (Docker Desktop, Apple
+`container`) refuse `chown`, in which case it runs as the folder's owner or, if
+only root can write there, as root, and says so in the log.
+
 ### Without Docker
 
 Needs Swift 6 and ffmpeg (`brew install ffmpeg` / `apt install ffmpeg`):
