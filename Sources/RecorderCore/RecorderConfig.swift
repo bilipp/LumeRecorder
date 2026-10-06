@@ -3,7 +3,7 @@ import Logging
 
 /// Server version reported by `GET /api/v1/info` and in Bonjour TXT records.
 public enum RecorderVersion {
-    public static let current = "0.1.0"
+    public static let current = "0.1.1"
 }
 
 /// Returns the current time. Injected so tests can drive time.
