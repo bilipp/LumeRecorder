@@ -30,6 +30,11 @@ public actor RecordingScheduler: Service {
         public var retryMaxDelay: TimeInterval = 30
         /// After SIGINT, how long ffmpeg gets to finalize before SIGTERM.
         public var interruptGracePeriod: TimeInterval = 10
+        /// `interruptGracePeriod` for a stop or delete a client is waiting on,
+        /// so an ffmpeg that doesn't exit on SIGINT can't hold the request
+        /// past the client's timeout. ffmpeg still writes its trailer on
+        /// SIGTERM.
+        public var requestedStopGracePeriod: TimeInterval = 1
         /// After SIGTERM, how long before SIGKILL.
         public var terminateGracePeriod: TimeInterval = 3
         /// Don't start a new attempt with less than this much time left.
@@ -226,7 +231,7 @@ public actor RecordingScheduler: Service {
         case .active:
             jobs[id]?.stopRequested = true
             if let process = job.process {
-                await Self.stopGracefully(process, options: options)
+                await Self.stopGracefully(process, options: options, requested: true)
             } else {
                 job.task?.cancel()
             }
@@ -243,7 +248,7 @@ public actor RecordingScheduler: Service {
             jobs[id]?.stopRequested = true
             jobs[id]?.deleted = true
             if let process = job.process {
-                await Self.stopGracefully(process, options: options)
+                await Self.stopGracefully(process, options: options, requested: true)
             } else {
                 job.task?.cancel()
             }
@@ -547,9 +552,12 @@ public actor RecordingScheduler: Service {
     }
 
     /// SIGINT → wait → SIGTERM → wait → SIGKILL, then wait for the exit.
-    static func stopGracefully(_ process: any RecordingProcess, options: Options) async {
+    /// `requested`: a client is waiting, so SIGTERM follows after
+    /// `requestedStopGracePeriod` instead of `interruptGracePeriod`.
+    static func stopGracefully(_ process: any RecordingProcess, options: Options, requested: Bool = false) async {
         process.interrupt()
-        if await waitForExit(process, timeout: options.interruptGracePeriod) { return }
+        let grace = requested ? options.requestedStopGracePeriod : options.interruptGracePeriod
+        if await waitForExit(process, timeout: grace) { return }
         process.terminate()
         if await waitForExit(process, timeout: options.terminateGracePeriod) { return }
         process.kill()

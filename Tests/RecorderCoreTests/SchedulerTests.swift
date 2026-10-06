@@ -198,6 +198,24 @@ struct SchedulerTests {
         #expect(playlist(store, record.id).hasSuffix("#EXT-X-ENDLIST\n"))
     }
 
+    @Test func requestedStopEscalatesWithoutTheEndingGracePeriod() async throws {
+        defer { removeTempDirectory(dir) }
+        let launcher = FakeLauncher([.ignoreInterrupt()])
+        var options = fastOptions()
+        options.interruptGracePeriod = 30
+        options.requestedStopGracePeriod = 0.1
+        let (scheduler, store) = try makeScheduler(launcher: launcher, options: options)
+        let (record, _) = try await scheduler.create(request(start: 0, end: 60), deviceID: nil, idempotencyKey: nil)
+        try await Task.sleep(for: .seconds(0.3))
+        let clock = ContinuousClock()
+        let started = clock.now
+        let stopped = try await scheduler.stop(record.id)
+        #expect(clock.now - started < .seconds(5))
+        #expect(stopped.status == .completed)
+        #expect(launcher.processes.first?.receivedSignals == ["INT", "TERM"])
+        #expect(playlist(store, record.id).hasSuffix("#EXT-X-ENDLIST\n"))
+    }
+
     @Test func immediateStartOverTheConcurrencyCapIsRejected() async throws {
         defer { removeTempDirectory(dir) }
         let (scheduler, store) = try makeScheduler(options: fastOptions(maxConcurrent: 1))

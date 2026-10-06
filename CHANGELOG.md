@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- On Linux (the Docker image), ffmpeg ignored SIGINT and SIGTERM: it inherited
+  a signal mask with both blocked from the thread that spawned it. Every stop,
+  delete or end-of-window stop sat out both grace periods (13 s) and ended in
+  SIGKILL, without ffmpeg writing its trailer. A stop now takes well under a
+  second.
+- A stop or delete request escalates to SIGTERM after 1 s instead of 10 s, so
+  a stuck ffmpeg can't hold the request past the client's timeout.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added

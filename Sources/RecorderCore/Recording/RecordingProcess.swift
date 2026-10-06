@@ -244,7 +244,7 @@ final class FFmpegProcess: RecordingProcess, @unchecked Sendable {
         process.terminationHandler = { [weak self] process in
             self?.finish(status: process.terminationStatus, stderrClosed: false)
         }
-        try process.run()
+        try Self.withStopSignalsUnblocked { try process.run() }
 
         let reader = pipe.fileHandleForReading
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -256,6 +256,23 @@ final class FFmpegProcess: RecordingProcess, @unchecked Sendable {
             try? reader.close()
             self?.finish(status: nil, stderrClosed: true)
         }
+    }
+
+    /// A child starts with its spawning thread's signal mask, and on Linux
+    /// the Swift executor's threads block SIGINT and SIGTERM. ffmpeg never
+    /// unblocks them: it would sit out both grace periods and die to SIGKILL
+    /// without writing its trailer. Unblocked on this thread for the spawn only.
+    private static func withStopSignalsUnblocked<T>(_ body: () throws -> T) rethrows -> T {
+        #if canImport(Glibc) || canImport(Musl)
+            var signals = sigset_t()
+            sigemptyset(&signals)
+            sigaddset(&signals, SIGINT)
+            sigaddset(&signals, SIGTERM)
+            var previous = sigset_t()
+            pthread_sigmask(SIG_UNBLOCK, &signals, &previous)
+            defer { pthread_sigmask(SIG_SETMASK, &previous, nil) }
+        #endif
+        return try body()
     }
 
     func waitForExit() async -> Int32 {

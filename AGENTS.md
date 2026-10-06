@@ -34,7 +34,9 @@ docker/entrypoint.sh          avahi service file + avahi-daemon, then drop to `l
 2. The job sleeps until `start`. A scheduled job is admitted at that moment or
    fails with `concurrency_limit` / `insufficient_storage`.
 3. `recordLoop` launches one ffmpeg per attempt through `RecordingProcessLauncher`.
-   An end timer sends SIGINT → (10 s) SIGTERM → (3 s) SIGKILL. If ffmpeg exits
+   An end timer sends SIGINT → (10 s) SIGTERM → (3 s) SIGKILL. A stop or
+   delete request waits for the exit, so it sends SIGTERM after 1 s instead.
+   If ffmpeg exits
    early it backs off (2 s → 30 s, reset after a 60 s attempt) and starts attempt
    n+1. ffmpeg's `append_list` adds the `#EXT-X-DISCONTINUITY`. Five attempts
    in a row that exit within 2 s while nothing has been captured yet end the
@@ -92,6 +94,11 @@ talking only to the `RecordingProcess` protocol.
   master playlist. Default selection picks the best video + audio. Subtitles and
   data are dropped (`-sn -dn`) because some (WebVTT) can't be stream-copied into
   MPEG-TS.
+- ffmpeg is spawned with SIGINT/SIGTERM unblocked (`withStopSignalsUnblocked`).
+  A child inherits its spawning thread's signal mask, and on Linux the Swift
+  executor's threads block both. ffmpeg never unblocks them, so it ignored
+  every graceful stop and died to SIGKILL. `aRequestedStopEndsFFmpegOnSIGINT`
+  (Linux CI) guards this. macOS never showed it.
 - The working directory is the recording directory. Playlist and segment names
   are relative so `index.m3u8` references `a<attempt>_%05d.ts` plainly.
 

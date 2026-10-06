@@ -105,4 +105,52 @@ struct FFmpegIntegrationTests {
             #expect((final.sizeBytes ?? 0) > 10_000)
         }
     }
+
+    /// ffmpeg has to honour SIGINT: a child inherits its spawning thread's
+    /// signal mask, and on Linux the executor's threads block SIGINT/SIGTERM.
+    @Test(.timeLimit(.minutes(2)))
+    func aRequestedStopEndsFFmpegOnSIGINT() async throws {
+        let ffmpeg = try #require(TestFFmpeg.path)
+        let dir = makeTempDirectory()
+        defer { removeTempDirectory(dir) }
+        let sourceBytes = try Data(contentsOf: makeSource(in: dir, ffmpeg: ffmpeg))
+
+        let originRouter = Router()
+        originRouter.get("live/user/pass/1.ts") { _, _ in
+            Response(status: .ok, headers: [.contentType: "video/mp2t"], body: .init(byteBuffer: ByteBuffer(bytes: sourceBytes)))
+        }
+        let origin = Application(router: originRouter, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
+
+        try await origin.test(.live) { client in
+            let port = try #require(client.port)
+            let streamURL = URL(string: "http://localhost:\(port)/live/user/pass/1.ts")!
+            let store = try RecorderStore(directory: dir.appendingPathComponent("data"))
+            var capabilities = FFmpegCapabilities.detect(executable: URL(fileURLWithPath: ffmpeg))
+            capabilities.readRateInitialBurst = false
+            var options = fastOptions()
+            // Ignoring SIGINT would cost the full 5 s, and SIGTERM 5 s more.
+            options.requestedStopGracePeriod = 5
+            options.terminateGracePeriod = 5
+            let scheduler = RecordingScheduler(
+                store: store, launcher: FFmpegLauncher(path: ffmpeg, capabilities: capabilities),
+                options: options, disk: FakeDisk()
+            )
+
+            let now = Date()
+            let (record, _) = try await scheduler.create(
+                CreateRecordingRequest(streamURL: streamURL, title: "Stop", start: now, end: now.addingTimeInterval(60)),
+                deviceID: nil, idempotencyKey: nil
+            )
+            let media = store.mediaDirectory(for: record.id)
+            #expect(await eventually(timeout: 30) { MediaInspector.stats(in: media).segmentCount > 0 })
+
+            let clock = ContinuousClock()
+            let started = clock.now
+            let stopped = try await scheduler.stop(record.id)
+            let elapsed = clock.now - started
+
+            #expect(elapsed < .seconds(3), "stop took \(elapsed)")
+            #expect(stopped.status == .completed, "failure: \(stopped.failureReason ?? "-")")
+        }
+    }
 }
