@@ -50,6 +50,9 @@ public enum RecorderServer {
         }
         let services = try RecorderServices(config: config, launcher: launcher, logger: logger)
         logger.notice("LumeRecorder \(RecorderVersion.current) \"\(config.serverName)\" (id \(services.store.identity.id)) listening on \(config.host):\(config.port), data in \(config.dataDirectory.path)")
+        if config.singleFileRecordings {
+            logger.info("Finished recordings are merged into a single \(SingleFileRecording.fileName)")
+        }
         // Recover before serving so admission counts are right from the first request.
         await services.scheduler.recover()
         try await makeApplication(services: services).runService()

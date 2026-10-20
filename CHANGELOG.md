@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `SINGLE_FILE_RECORDINGS=1` (`--single-file-recordings`): a finished
+  recording's segments are merged into one `recording.ts`, addressed by a
+  byte-range `index.m3u8`. Live recording and playback are unchanged.
+- Playback serves `Range` requests on `.ts` files (`206`/`416`).
+
 ## [0.1.1] - 2026-10-06
 
 ### Fixed

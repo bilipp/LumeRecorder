@@ -41,10 +41,15 @@ docker/entrypoint.sh          avahi service file + avahi-daemon, then drop to `l
    n+1. ffmpeg's `append_list` adds the `#EXT-X-DISCONTINUITY`. Five attempts
    in a row that exit within 2 s while nothing has been captured yet end the
    loop: the recording fails as `source_unavailable: <redacted stderr tail>`.
-4. `finalize`: append `#EXT-X-ENDLIST` if missing, then `completed` if any
+4. `finalize`: append `#EXT-X-ENDLIST` if missing. With
+   `SINGLE_FILE_RECORDINGS`, merge the segments into `recording.ts` and
+   rewrite the playlist with `#EXT-X-BYTERANGE` (`SingleFileRecording`, off
+   the actor; segments stay on low disk or error). Then `completed` if any
    segment exists, else `failed` (`no_segments: <redacted stderr tail>`).
 5. Shutdown (SIGTERM/SIGINT) stops ffmpeg but doesn't finalize. `recover()` at
-   the next start resumes future-ending `recording` rows as a new attempt.
+   the next start resumes future-ending `recording` rows as a new attempt,
+   unless the playlist is already merged (then it finalizes: ffmpeg's
+   `append_list` drops `#EXT-X-BYTERANGE`).
 
 Tests drive all of this with `FakeLauncher`/`FakeProcess`. Keep the scheduler
 talking only to the `RecordingProcess` protocol.

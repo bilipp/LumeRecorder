@@ -12,13 +12,20 @@ struct APIHarness {
     let launcher: FakeLauncher
     let services: RecorderServices
 
-    init(maxConcurrent: Int = 4, disk: FakeDisk = FakeDisk(), minFreeGB: Double = 0, launcher: FakeLauncher = FakeLauncher()) throws {
+    init(
+        maxConcurrent: Int = 4,
+        disk: FakeDisk = FakeDisk(),
+        minFreeGB: Double = 0,
+        launcher: FakeLauncher = FakeLauncher(),
+        singleFileRecordings: Bool = false
+    ) throws {
         dir = makeTempDirectory()
         self.launcher = launcher
         var config = RecorderConfig(dataDirectory: dir, maxConcurrent: maxConcurrent, minFreeGB: minFreeGB, serverName: "test-recorder", bonjourEnabled: false)
         config.port = 8090
         services = try RecorderServices(config: config, launcher: launcher, disk: disk, configureScheduler: { options in
             options = fastOptions(maxConcurrent: maxConcurrent, minFreeBytes: config.minFreeBytes)
+            options.singleFileRecordings = singleFileRecordings
         })
     }
 
@@ -250,6 +257,44 @@ struct RouteTests {
             #expect(try APIHarness.decode(Recording.self, stopped).status == .completed)
             let finalPlaylist = try await client.execute(uri: grant.url.path, method: .get)
             #expect(APIHarness.text(finalPlaylist).contains("#EXT-X-ENDLIST"))
+        }
+    }
+
+    @Test func singleFileRecordingsServeByteRanges() async throws {
+        let harness = try APIHarness(singleFileRecordings: true)
+        try await harness.run { client in
+            let token = try await harness.pair(client).token
+            let live = try APIHarness.decode(Recording.self, try await client.execute(
+                uri: "/api/v1/recordings", method: .post, headers: harness.auth(token), body: APIHarness.body(harness.createRequest(start: 0, end: 60))
+            ))
+            let media = harness.services.store.mediaDirectory(for: live.id)
+            #expect(await eventually { MediaInspector.stats(in: media).segmentCount >= 2 })
+            let stopped = try await client.execute(uri: "/api/v1/recordings/\(live.id)/stop", method: .post, headers: harness.auth(token))
+            #expect(try APIHarness.decode(Recording.self, stopped).status == .completed)
+
+            let grant = try APIHarness.decode(PlaybackGrant.self, try await client.execute(
+                uri: "/api/v1/recordings/\(live.id)/playback", method: .post, headers: harness.auth(token)
+            ))
+            let text = APIHarness.text(try await client.execute(uri: grant.url.path, method: .get))
+            #expect(text.contains("#EXT-X-BYTERANGE:1880@1880\nrecording.ts"))
+            #expect(!text.contains("a1_00000.ts"))
+
+            let file = grant.url.deletingLastPathComponent().appendingPathComponent("recording.ts").path
+            let size = try #require(try FileManager.default.attributesOfItem(atPath: media.appendingPathComponent("recording.ts").path)[.size] as? Int)
+            let whole = try await client.execute(uri: file, method: .get)
+            #expect(whole.status == .ok)
+            #expect(whole.headers[.acceptRanges] == "bytes")
+            #expect(whole.body.readableBytes == size)
+
+            let part = try await client.execute(uri: file, method: .get, headers: [.range: "bytes=1880-3759"])
+            #expect(part.status == .partialContent)
+            #expect(part.headers[.contentRange] == "bytes 1880-3759/\(size)")
+            #expect(part.headers[.contentType] == "video/mp2t")
+            #expect(part.body.readableBytes == 1880)
+
+            let beyond = try await client.execute(uri: file, method: .get, headers: [.range: "bytes=\(size)-"])
+            #expect(beyond.status == .rangeNotSatisfiable)
+            #expect(beyond.headers[.contentRange] == "bytes */\(size)")
         }
     }
 

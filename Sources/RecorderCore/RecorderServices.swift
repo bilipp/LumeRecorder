@@ -30,6 +30,7 @@ public struct RecorderServices: Sendable {
         }
         self.signer = signer
         var options = RecordingScheduler.Options(maxConcurrent: config.maxConcurrent, minFreeBytes: config.minFreeBytes)
+        options.singleFileRecordings = config.singleFileRecordings
         configureScheduler(&options)
         scheduler = RecordingScheduler(store: store, launcher: launcher, options: options, disk: disk, now: now, logger: logger)
         pairing = PairingManager(directory: config.dataDirectory, now: now, logger: logger)

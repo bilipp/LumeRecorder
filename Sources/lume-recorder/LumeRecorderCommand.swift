@@ -28,6 +28,10 @@ struct Serve: AsyncParsableCommand {
     @Option(name: .customLong("ffmpeg-path"), help: "ffmpeg executable (env FFMPEG_PATH, default ffmpeg on PATH).") var ffmpegPath: String?
     @Option(name: .customLong("log-level"), help: "trace|debug|info|notice|warning|error|critical (env LOG_LEVEL, default info).") var logLevel: String?
     @Flag(name: .customLong("no-bonjour"), help: "Don't advertise via Bonjour (env BONJOUR=0).") var noBonjour = false
+    @Flag(
+        name: .customLong("single-file-recordings"),
+        help: "Merge each finished recording into one recording.ts (env SINGLE_FILE_RECORDINGS=1)."
+    ) var singleFileRecordings = false
 
     func run() async throws {
         var config = RecorderConfig.fromEnvironment()
@@ -46,6 +50,7 @@ struct Serve: AsyncParsableCommand {
             config.logLevel = level
         }
         if noBonjour { config.bonjourEnabled = false }
+        if singleFileRecordings { config.singleFileRecordings = true }
         guard config.maxConcurrent >= 1 else { throw ValidationError("max-concurrent must be at least 1") }
 
         let level = config.logLevel

@@ -106,6 +106,63 @@ struct FFmpegIntegrationTests {
         }
     }
 
+    /// The merged byte-range playlist must still decode end to end.
+    @Test(.timeLimit(.minutes(2)))
+    func singleFileRecordingDecodes() async throws {
+        let ffmpeg = try #require(TestFFmpeg.path)
+        let dir = makeTempDirectory()
+        defer { removeTempDirectory(dir) }
+        let sourceBytes = try Data(contentsOf: makeSource(in: dir, ffmpeg: ffmpeg))
+
+        let originRouter = Router()
+        originRouter.get("live/user/pass/1.ts") { _, _ in
+            Response(status: .ok, headers: [.contentType: "video/mp2t"], body: .init(byteBuffer: ByteBuffer(bytes: sourceBytes)))
+        }
+        let origin = Application(router: originRouter, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
+
+        try await origin.test(.live) { client in
+            let port = try #require(client.port)
+            let streamURL = URL(string: "http://localhost:\(port)/live/user/pass/1.ts")!
+            let store = try RecorderStore(directory: dir.appendingPathComponent("data"))
+            var capabilities = FFmpegCapabilities.detect(executable: URL(fileURLWithPath: ffmpeg))
+            capabilities.readRateInitialBurst = false
+            var options = fastOptions()
+            options.singleFileRecordings = true
+            let scheduler = RecordingScheduler(
+                store: store, launcher: FFmpegLauncher(path: ffmpeg, capabilities: capabilities),
+                options: options, disk: FakeDisk()
+            )
+
+            let now = Date()
+            let (record, _) = try await scheduler.create(
+                CreateRecordingRequest(streamURL: streamURL, title: "Single", start: now, end: now.addingTimeInterval(8)),
+                deviceID: nil, idempotencyKey: nil
+            )
+            #expect(await eventually(timeout: 60) { await store.recording(record.id)?.status.isPending == false })
+            let final = try #require(await store.recording(record.id))
+            #expect(final.status == .completed, "failure: \(final.failureReason ?? "-")")
+
+            let media = store.mediaDirectory(for: record.id)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: media.path).sorted() == ["index.m3u8", "recording.ts"])
+            let summary = HLSPlaylist.summarize(try String(contentsOf: media.appendingPathComponent("index.m3u8"), encoding: .utf8))
+            #expect(summary.segmentCount >= 2)
+
+            // Decode every byte range through ffmpeg's HLS demuxer.
+            let decode = Process()
+            decode.executableURL = URL(fileURLWithPath: ffmpeg)
+            decode.arguments = ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", "index.m3u8", "-f", "null", "-"]
+            decode.currentDirectoryURL = media
+            let errors = Pipe()
+            decode.standardError = errors
+            decode.standardInput = FileHandle.nullDevice
+            try decode.run()
+            let stderr = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            decode.waitUntilExit()
+            #expect(decode.terminationStatus == 0, "ffmpeg: \(stderr)")
+            #expect(stderr.isEmpty, "ffmpeg: \(stderr)")
+        }
+    }
+
     /// ffmpeg has to honour SIGINT: a child inherits its spawning thread's
     /// signal mask, and on Linux the executor's threads block SIGINT/SIGTERM.
     @Test(.timeLimit(.minutes(2)))

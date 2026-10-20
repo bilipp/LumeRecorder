@@ -188,8 +188,22 @@ public enum RecorderRoutes {
         }
         headers[.contentType] = "video/mp2t"
         headers[.cacheControl] = "private, max-age=3600"
-        let body = try await FileIO(threadPool: .singleton).loadFile(path: fileURL.path, context: context)
-        return Response(status: .ok, headers: headers, body: body)
+        headers[.acceptRanges] = "bytes"
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let size = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+        let fileIO = FileIO(threadPool: .singleton)
+        switch ByteRange.resolve(request.headers[.range], fileSize: size) {
+        case .whole:
+            let body = try await fileIO.loadFile(path: fileURL.path, context: context)
+            return Response(status: .ok, headers: headers, body: body)
+        case let .partial(range):
+            headers[.contentRange] = "bytes \(range.lowerBound)-\(range.upperBound)/\(size)"
+            let body = try await fileIO.loadFile(path: fileURL.path, range: Int(range.lowerBound) ... Int(range.upperBound), context: context)
+            return Response(status: .partialContent, headers: headers, body: body)
+        case .unsatisfiable:
+            headers[.contentRange] = "bytes */\(size)"
+            return Response(status: .rangeNotSatisfiable, headers: headers)
+        }
     }
 
     // MARK: Helpers

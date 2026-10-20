@@ -112,6 +112,7 @@ Every variable also has a CLI flag on `lume-recorder serve` (e.g. `--port`,
 | `FFMPEG_PATH` | `ffmpeg` on `PATH` | ffmpeg executable |
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `notice`, `warning`, `error`, `critical` |
 | `BONJOUR` | `1` | `0` disables Bonjour (NetService on macOS, avahi in Docker) |
+| `SINGLE_FILE_RECORDINGS` | `0` | `1` merges each finished recording into one `recording.ts` (see below) |
 | `TZ` | UTC | Container timezone (log timestamps only; the API is UTC) |
 
 Data layout:
@@ -123,6 +124,7 @@ DATA_DIR/
 ├── devices.json         paired devices (SHA-256 token hashes only)
 ├── pairing-code.json    current pairing code (read by `lume-recorder pair`)
 └── recordings/<id>/     index.m3u8 + a<attempt>_<n>.ts segments
+                         (finished, with SINGLE_FILE_RECORDINGS: index.m3u8 + recording.ts)
 ```
 
 Files are written atomically and readable only by the server user (`0600`).
@@ -175,7 +177,7 @@ Swift clients should use `LumeRecorderKit` (in `Kit/`), which wraps all of this.
 | `GET /api/v1/status` | bearer | Active/scheduled counts, disk space, `maxConcurrent` |
 | `GET /api/v1/devices` | bearer | Paired devices |
 | `DELETE /api/v1/devices/{id}` | bearer | Unpair (your own device too) → `204` |
-| `GET /play/{id}/{expiry}/{sig}/{file}` | signature | `index.m3u8` / `*.ts`. Works while recording |
+| `GET /play/{id}/{expiry}/{sig}/{file}` | signature | `index.m3u8` / `*.ts`. Works while recording. `.ts` honours `Range` |
 
 Create body: `{streamURL, title, channelName?, channelLogoURL?,
 programmeDescription?, start, end, sourceRef?}`. Rules: http/https stream URL,
@@ -211,6 +213,14 @@ headers.
 - On restart, running recordings resume as a new attempt. Ones that ended while
   the server was down become `completed` (if media exists) or `failed`.
   Scheduled ones whose window passed become `failed` (`missed`).
+- With `SINGLE_FILE_RECORDINGS=1`, a recording still records (and plays live)
+  as segments. When it finishes, the segments are concatenated into one
+  `recording.ts` that any player opens directly, and `index.m3u8` is rewritten
+  to address it with `#EXT-X-BYTERANGE`, so playback in Lume is unchanged.
+  The merge copies the recording once, so it needs the recording's size in
+  free disk on top of `MIN_FREE_GB`. Without that space, or on any error, the
+  recording keeps its segments. It only applies to recordings that finish
+  while the setting is on.
 - `docker stop` (SIGTERM) stops ffmpeg cleanly and keeps the rows `recording`,
   so they resume when the container is back.
 

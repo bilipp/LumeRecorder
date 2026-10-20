@@ -16,6 +16,7 @@ services:
       # SERVER_NAME: "Living Room DVR"
       # PUBLIC_URL: "https://dvr.example.com"
       # BONJOUR: "0"          # set if the host already runs avahi-daemon
+      # SINGLE_FILE_RECORDINGS: "1"   # one recording.ts per finished recording
       TZ: "Europe/Berlin"
       LOG_LEVEL: "info"
 

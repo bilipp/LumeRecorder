@@ -48,6 +48,9 @@ public actor RecordingScheduler: Service {
         /// the recording fails as `source_unavailable` instead of retrying for
         /// the whole window. `0` disables the check.
         public var sourceUnavailableAfterQuickExits = 5
+        /// `SINGLE_FILE_RECORDINGS`: merge a finished recording's segments into
+        /// one `recording.ts` (see `SingleFileRecording`).
+        public var singleFileRecordings = false
 
         public init(maxConcurrent: Int, minFreeBytes: Int64) {
             self.maxConcurrent = maxConcurrent
@@ -132,7 +135,11 @@ public actor RecordingScheduler: Service {
             }
             switch record.status {
             case .recording:
-                if record.end > current {
+                // Merged into one file means it was finalizing when the server
+                // stopped: resuming would let ffmpeg's append_list rewrite the
+                // byte-range playlist.
+                let merged = SingleFileRecording.isConsolidated(in: store.mediaDirectory(for: record.id))
+                if record.end > current, !merged {
                     logger.info("Resuming recording \(record.id) after restart")
                     startJob(record.id, phase: .active, resume: true)
                 } else {
@@ -463,6 +470,12 @@ public actor RecordingScheduler: Service {
         } catch {
             logger.warning("Recording \(id): couldn't append #EXT-X-ENDLIST: \(error)")
         }
+        if options.singleFileRecordings {
+            let segmented = MediaInspector.stats(in: directory)
+            if segmented.segmentCount > 0 {
+                await mergeIntoSingleFile(id, directory: directory, mediaBytes: segmented.sizeBytes)
+            }
+        }
         let stats = MediaInspector.stats(in: directory)
         let current = now()
         if stats.segmentCount > 0 {
@@ -484,6 +497,26 @@ public actor RecordingScheduler: Service {
                 $0.sizeBytes = stats.sizeBytes
             }
             logger.warning("Recording \(id) failed: \(reason)")
+        }
+    }
+
+    /// Runs `SingleFileRecording.consolidate` off the actor (it copies the
+    /// whole recording). Needs the media's size in free space on top of
+    /// `minFreeBytes`; without it, or on any error, the segments stay.
+    private func mergeIntoSingleFile(_ id: UUID, directory: URL, mediaBytes: Int64) async {
+        if let space = disk.space(at: store.recordingsDirectory), space.freeBytes - mediaBytes < options.minFreeBytes {
+            logger.warning("Recording \(id): not enough free disk to merge into a single file; keeping segments")
+            return
+        }
+        do {
+            let merged = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
+                    continuation.resume(with: Result { try SingleFileRecording.consolidate(in: directory) })
+                }
+            }
+            if merged { logger.info("Recording \(id) merged into \(SingleFileRecording.fileName)") }
+        } catch {
+            logger.warning("Recording \(id): couldn't merge into a single file, keeping segments: \(error)")
         }
     }
 

@@ -32,6 +32,9 @@ public struct RecorderConfig: Sendable {
     public var logLevel: Logger.Level
     /// `BONJOUR` — `0`/`false` disables the macOS NetService advertisement.
     public var bonjourEnabled: Bool
+    /// `SINGLE_FILE_RECORDINGS` — `1`/`true` merges each finished recording
+    /// into one `recording.ts` instead of keeping its HLS segments.
+    public var singleFileRecordings: Bool
     /// Lifetime of playback grants.
     public var playbackGrantLifetime: TimeInterval = 12 * 3600
 
@@ -45,7 +48,8 @@ public struct RecorderConfig: Sendable {
         publicURL: URL? = nil,
         ffmpegPath: String = "ffmpeg",
         logLevel: Logger.Level = .info,
-        bonjourEnabled: Bool = true
+        bonjourEnabled: Bool = true,
+        singleFileRecordings: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -57,6 +61,7 @@ public struct RecorderConfig: Sendable {
         self.ffmpegPath = ffmpegPath
         self.logLevel = logLevel
         self.bonjourEnabled = bonjourEnabled
+        self.singleFileRecordings = singleFileRecordings
     }
 
     /// Builds a config from environment variables, falling back to defaults.
@@ -76,6 +81,9 @@ public struct RecorderConfig: Sendable {
         if let ffmpeg = value("FFMPEG_PATH") { config.ffmpegPath = ffmpeg }
         if let level = value("LOG_LEVEL").flatMap({ Logger.Level(rawValue: $0.lowercased()) }) { config.logLevel = level }
         if let bonjour = value("BONJOUR") { config.bonjourEnabled = !["0", "false", "no", "off"].contains(bonjour.lowercased()) }
+        if let single = value("SINGLE_FILE_RECORDINGS") {
+            config.singleFileRecordings = ["1", "true", "yes", "on"].contains(single.lowercased())
+        }
         return config
     }
 
