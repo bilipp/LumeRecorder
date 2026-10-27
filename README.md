@@ -17,6 +17,24 @@ links.
 > keep. LumeRecorder ships no channels or streams. It records what your Lume
 > app points it at, using your provider credentials, for your private use.
 
+## Mac app (no Docker)
+
+On a Mac you can run LumeRecorder as a menu-bar app instead of a container:
+
+1. Unzip `LumeRecorder-<version>.zip` and move `LumeRecorder.app` to
+   Applications. Build it yourself with `MacApp/scripts/build-app.sh`.
+2. Install ffmpeg if the build doesn't bundle it: `brew install ffmpeg`.
+3. Open the app. A record icon appears in the menu bar. Click it to see the
+   pairing code, recording status and paired devices.
+
+The app registers itself to open at login (toggle it in the menu), keeps the
+Mac from idle-sleeping while recordings are running or scheduled, and stops
+ffmpeg cleanly when you quit. Data lives in
+`~/Library/Application Support/LumeRecorder`, the log in
+`~/Library/Logs/LumeRecorder/lume-recorder.log`. The environment variables
+from [Configuration](#configuration) still apply. A Mac whose lid is closed
+(without an external display) still sleeps and misses recordings.
+
 ## Quick start (Docker Compose)
 
 ```yaml
@@ -89,6 +107,7 @@ devices on your LAN discover it.
    `Pairing code: 123 456 (valid 10 min)`
 2. Print the current code at any time:
    `docker exec lume-recorder lume-recorder pair` (or `lume-recorder pair --data-dir ./data`).
+   The Mac app shows it in its menu.
 3. In Lume, pick the discovered server (or enter `host:port`) and type the code.
 
 A code stays valid for its whole 10-minute window, so several devices can pair
@@ -229,7 +248,13 @@ headers.
 ```bash
 swift build && swift test           # server (Swift Testing + HummingbirdTesting)
 (cd Kit && swift test)              # client kit
+(cd MacApp && swift build)          # macOS menu-bar app
+MacApp/scripts/build-app.sh         # LumeRecorder.app + zip in MacApp/dist/
 ```
+
+`build-app.sh` signs ad-hoc by default. Set `SIGN_IDENTITY` (Developer ID) and
+`NOTARY_PROFILE` for a build that opens on other Macs without a Gatekeeper
+warning, and `FFMPEG_BINARY` to bundle a static ffmpeg.
 
 The real-ffmpeg integration test is skipped when ffmpeg isn't installed. See
 `AGENTS.md` for architecture and invariants.

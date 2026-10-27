@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- macOS menu-bar app (`MacApp/`, built by `MacApp/scripts/build-app.sh`). It
+  runs the server in-process and shows the pairing code, recording status
+  and paired devices. It opens at login, keeps the Mac awake while recordings
+  are running or scheduled, and stops ffmpeg cleanly on quit. It uses a
+  bundled ffmpeg, else Homebrew's.
+- `RecorderServer.makeServices(config:logger:)` for hosts that run the
+  application in their own `ServiceGroup`.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added

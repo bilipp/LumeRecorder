@@ -40,6 +40,21 @@ jobs:
             xcodebuild build -scheme LumeRecorderKit -destination "generic/platform=$platform" -quiet
           done
 
+  mac-app:
+    name: macOS app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Build LumeRecorder.app (universal, ad-hoc signed)
+        run: MacApp/scripts/build-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LumeRecorder-macOS
+          path: MacApp/dist/*.zip
+          if-no-files-found: error
+
   # Each architecture builds natively (Swift under QEMU emulation takes hours
   # and kills the runner). Pushes and PRs build amd64 only; release tags build
   # both, push each by digest, and the `manifest` job joins them into one
