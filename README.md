@@ -172,7 +172,7 @@ The server advertises `_lume-recorder._tcp` with TXT records `id=<server id>`,
       <type>_lume-recorder._tcp</type>
       <port>8090</port>
       <txt-record>id=PASTE-SERVER-ID</txt-record>
-      <txt-record>version=0.3.0</txt-record>
+      <txt-record>version=0.3.1</txt-record>
       <txt-record>api=1</txt-record>
     </service>
   </service-group>
