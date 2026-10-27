@@ -110,7 +110,10 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
-          gh release upload "$GITHUB_REF_NAME" MacApp/dist/*.dmg --clobber
+          # Plus a version-less copy, so releases/latest/download/LumeRecorder.dmg
+          # (linked from getlume.org/recorder) always serves the newest build.
+          cp MacApp/dist/LumeRecorder-*.dmg "$RUNNER_TEMP/LumeRecorder.dmg"
+          gh release upload "$GITHUB_REF_NAME" MacApp/dist/*.dmg "$RUNNER_TEMP/LumeRecorder.dmg" --clobber
       - name: Remove signing material
         if: always()
         run: |
