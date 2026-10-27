@@ -21,13 +21,13 @@ links.
 
 On a Mac you can run LumeRecorder as a menu-bar app instead of a container:
 
-1. Unzip `LumeRecorder-<version>.zip` and move `LumeRecorder.app` to
-   Applications. Build it yourself with `MacApp/scripts/build-app.sh`.
-2. Install ffmpeg if the build doesn't bundle it: `brew install ffmpeg`.
-3. Open the app. A record icon appears in the menu bar. Click it to see the
+1. Download `LumeRecorder-<version>.dmg` from the
+   [latest release](https://github.com/bilipp/LumeRecorder/releases/latest),
+   open it, and drag LumeRecorder into Applications.
+2. Open the app. A record icon appears in the menu bar. Click it to see the
    pairing code, recording status and paired devices.
 
-The app registers itself to open at login (toggle it in the menu), keeps the
+ffmpeg is built in, so there's nothing else to install. The app registers itself to open at login (toggle it in the menu), keeps the
 Mac from idle-sleeping while recordings are running or scheduled, and stops
 ffmpeg cleanly when you quit. Data lives in
 `~/Library/Application Support/LumeRecorder`, the log in
@@ -249,18 +249,23 @@ headers.
 swift build && swift test           # server (Swift Testing + HummingbirdTesting)
 (cd Kit && swift test)              # client kit
 (cd MacApp && swift build)          # macOS menu-bar app
-MacApp/scripts/build-app.sh         # LumeRecorder.app + zip in MacApp/dist/
+MacApp/scripts/build-app.sh         # LumeRecorder.app + DMG in MacApp/dist/
 ```
 
-`build-app.sh` signs ad-hoc by default. Set `SIGN_IDENTITY` (Developer ID) and
-`NOTARY_PROFILE` for a build that opens on other Macs without a Gatekeeper
-warning, and `FFMPEG_BINARY` to bundle a static ffmpeg.
+`build-app.sh` bundles an LGPL ffmpeg built from the official source release
+by `MacApp/scripts/build-ffmpeg.sh` (no external libraries, about 4 minutes on
+first build, cached in `MacApp/.build/`). Set `FFMPEG_BINARY` to bundle another
+static build. It signs ad-hoc by default. Set `SIGN_IDENTITY` (Developer ID)
+and `NOTARY_PROFILE` for a build that opens on other Macs without a Gatekeeper
+warning. The DMG layout comes from `MacApp/Resources/dmg-settings.py`
+([dmgbuild](https://dmgbuild.readthedocs.io), installed into a venv on first
+use).
 
 ### Signed Mac builds in CI
 
 The `macOS app` job signs every push to `main` with a Developer ID
 certificate. On a `v*` tag it also notarizes the app and attaches
-`LumeRecorder-<version>.zip` to the GitHub release. A release tag fails
+`LumeRecorder-<version>.dmg` to the GitHub release. A release tag fails
 without these repository secrets, and PRs build ad-hoc signed:
 
 | Secret | Value |

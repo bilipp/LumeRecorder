@@ -41,7 +41,7 @@ jobs:
           done
 
   # Pushes are signed with the Developer ID certificate when the secrets exist;
-  # release tags are also notarized and attached to the GitHub release (and
+  # release tags are also notarized and their DMG attached to the GitHub release (and
   # fail without the secrets). PRs build ad-hoc signed.
   mac-app:
     name: macOS app
@@ -86,7 +86,14 @@ jobs:
         run: |
           echo "$KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/notary.p8"
           echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
-      - name: Build LumeRecorder.app (universal)
+      # ffmpeg takes the longest; it only changes with build-ffmpeg.sh.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            MacApp/.build/ffmpeg-*/ffmpeg
+            MacApp/.build/ffmpeg-*/*.txt
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('MacApp/scripts/build-ffmpeg.sh') }}
+      - name: Build LumeRecorder.app + DMG (universal)
         env:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
@@ -94,7 +101,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: LumeRecorder-macOS
-          path: MacApp/dist/*.zip
+          path: MacApp/dist/*.dmg
           if-no-files-found: error
       - name: Attach to GitHub release
         if: env.IS_RELEASE == 'true'
@@ -103,7 +110,7 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
-          gh release upload "$GITHUB_REF_NAME" MacApp/dist/*.zip --clobber
+          gh release upload "$GITHUB_REF_NAME" MacApp/dist/*.dmg --clobber
       - name: Remove signing material
         if: always()
         run: |
