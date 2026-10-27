@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- The Mac app ships as a drag-to-Applications DMG instead of a zip, with its
+  own icon. It bundles ffmpeg 9.0.2 (LGPL, built from the official source by
+  `MacApp/scripts/build-ffmpeg.sh`, system libraries only), so users install
+  nothing else.
+
 ## [0.3.0] - 2026-10-27
 
 ### Added

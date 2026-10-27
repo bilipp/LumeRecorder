@@ -24,8 +24,11 @@ Sources/lume-recorder/        CLI: serve (default) | pair | server-id
 MacApp/                       LumeRecorder.app: separate package, SwiftUI MenuBarExtra
   Sources/LumeRecorderApp/    ServerController (ServiceGroup, polling, sleep assertion,
                               SMAppService), menu UI, file log handler
-  scripts/build-app.sh        universal build → .app bundle (+ optional ffmpeg, signing,
-                              notarization) → MacApp/dist/
+  Resources/                  Info.plist, AppIcon.icon (Lume's icon + record badge),
+                              dmg-settings.py (dmgbuild layout)
+  scripts/build-ffmpeg.sh     pinned LGPL ffmpeg, universal, system libraries only
+  scripts/build-app.sh        universal build → .app (bundled ffmpeg, icon, signing,
+                              notarization) → drag-to-Applications DMG in MacApp/dist/
 Tests/RecorderCoreTests/      Swift Testing: store, scheduler (fake launcher), recovery,
                               pairing, signing, routes (HummingbirdTesting), real ffmpeg
 docker/entrypoint.sh          avahi service file + avahi-daemon, then drop to `lume`

@@ -100,7 +100,7 @@ struct MenuContent: View {
         VStack(alignment: .leading, spacing: 4) {
             Label("ffmpeg not found", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text("Recordings fail until ffmpeg is installed. Install it with Homebrew (`brew install ffmpeg`), then restart the recorder.")
+            Text("LumeRecorder can't find the ffmpeg it ships with, so recordings fail. Download LumeRecorder again and replace the app.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
