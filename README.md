@@ -256,6 +256,29 @@ MacApp/scripts/build-app.sh         # LumeRecorder.app + zip in MacApp/dist/
 `NOTARY_PROFILE` for a build that opens on other Macs without a Gatekeeper
 warning, and `FFMPEG_BINARY` to bundle a static ffmpeg.
 
+### Signed Mac builds in CI
+
+The `macOS app` job signs every push to `main` with a Developer ID
+certificate. On a `v*` tag it also notarizes the app and attaches
+`LumeRecorder-<version>.zip` to the GitHub release. A release tag fails
+without these repository secrets, and PRs build ad-hoc signed:
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_CERTIFICATE_P12_BASE64` | `base64 -i cert.p12`: the "Developer ID Application" certificate *with* its private key, exported from Keychain Access |
+| `MACOS_CERTIFICATE_PASSWORD` | the password set during that export |
+| `NOTARY_KEY_P8_BASE64` | `base64 -i AuthKey_XXXX.p8`: an App Store Connect API key (Users and Access → Integrations, role Developer) |
+| `NOTARY_KEY_ID` | that key's ID |
+| `NOTARY_ISSUER_ID` | the issuer ID shown above the key list |
+
+```bash
+gh secret set MACOS_CERTIFICATE_P12_BASE64 < <(base64 -i cert.p12)
+gh secret set MACOS_CERTIFICATE_PASSWORD
+gh secret set NOTARY_KEY_P8_BASE64 < <(base64 -i AuthKey_XXXX.p8)
+gh secret set NOTARY_KEY_ID
+gh secret set NOTARY_ISSUER_ID
+```
+
 The real-ffmpeg integration test is skipped when ffmpeg isn't installed. See
 `AGENTS.md` for architecture and invariants.
 

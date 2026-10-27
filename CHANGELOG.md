@@ -11,7 +11,9 @@ All notable changes to this project are documented here. The format follows
   runs the server in-process and shows the pairing code, recording status
   and paired devices. It opens at login, keeps the Mac awake while recordings
   are running or scheduled, and stops ffmpeg cleanly on quit. It uses a
-  bundled ffmpeg, else Homebrew's.
+  bundled ffmpeg, else Homebrew's. CI signs it with a Developer ID
+  certificate. Release tags also notarize it and attach the zip to the
+  GitHub release.
 - `RecorderServer.makeServices(config:logger:)` for hosts that run the
   application in their own `ServiceGroup`.
 

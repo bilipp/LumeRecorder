@@ -8,6 +8,9 @@
 #                                          unless the user clears quarantine)
 #   NOTARY_PROFILE=name                    notarize + staple (xcrun notarytool
 #                                          store-credentials name …); needs SIGN_IDENTITY
+#   NOTARY_KEY_PATH=AuthKey.p8 NOTARY_KEY_ID=… NOTARY_ISSUER_ID=…
+#                                          notarize with an App Store Connect API key
+#                                          instead of a profile (CI)
 #   BUNDLE_ID=com.example.lumerecorder     override the bundle identifier
 #   ARCHS="arm64 x86_64"                   architectures to build
 set -euo pipefail
@@ -60,11 +63,18 @@ zip="$dist/LumeRecorder-$version.zip"
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
 
+notary_auth=()
 if [[ -n "${NOTARY_PROFILE:-}" ]]; then
+    notary_auth=(--keychain-profile "$NOTARY_PROFILE")
+elif [[ -n "${NOTARY_KEY_PATH:-}" ]]; then
+    notary_auth=(--key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+fi
+if [[ ${#notary_auth[@]} -gt 0 ]]; then
     [[ "$identity" != "-" ]] || { echo "error: notarization needs SIGN_IDENTITY" >&2; exit 1; }
     echo "==> Notarizing"
-    xcrun notarytool submit "$zip" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun notarytool submit "$zip" "${notary_auth[@]}" --wait --timeout 30m
     xcrun stapler staple "$app"
+    spctl --assess --type execute --verbose=2 "$app"
     rm -f "$zip"
     ditto -c -k --keepParent "$app" "$zip"
 fi
