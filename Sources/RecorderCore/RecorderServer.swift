@@ -41,6 +41,16 @@ public enum RecorderServer {
 
     /// Builds services with real ffmpeg and runs until SIGINT/SIGTERM.
     public static func run(config: RecorderConfig, logger: Logger) async throws {
+        let services = try makeServices(config: config, logger: logger)
+        // Recover before serving so admission counts are right from the first request.
+        await services.scheduler.recover()
+        try await makeApplication(services: services).runService()
+    }
+
+    /// Builds services with real ffmpeg and logs the startup banner. Hosts that
+    /// own their lifecycle (the macOS app) run `makeApplication` in their own
+    /// `ServiceGroup`, after `scheduler.recover()`.
+    public static func makeServices(config: RecorderConfig, logger: Logger) throws -> RecorderServices {
         let launcher = FFmpegLauncher(path: config.ffmpegPath)
         if let executable = launcher.executable {
             let caps = launcher.capabilities
@@ -53,8 +63,6 @@ public enum RecorderServer {
         if config.singleFileRecordings {
             logger.info("Finished recordings are merged into a single \(SingleFileRecording.fileName)")
         }
-        // Recover before serving so admission counts are right from the first request.
-        await services.scheduler.recover()
-        try await makeApplication(services: services).runService()
+        return services
     }
 }
