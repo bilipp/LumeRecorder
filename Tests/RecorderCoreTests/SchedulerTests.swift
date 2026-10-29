@@ -166,10 +166,14 @@ struct SchedulerTests {
             .exitAfter(0.01, segments: 0, status: 1, stderr: "Connection refused"),
         ])
         let (scheduler, store) = try makeScheduler(launcher: launcher)
-        let (record, _) = try await scheduler.create(request(start: 0, end: 2.5), deviceID: nil, idempotencyKey: nil)
-        #expect(await eventually { await status(store, record.id) == .completed })
-        #expect(launcher.processes.count > 6)
-        #expect(await store.recording(record.id)?.failureReason == nil)
+        // Wait for the attempts instead of fitting them into a short window:
+        // slow CI runners managed only six in 2.5 s.
+        let (record, _) = try await scheduler.create(request(start: 0, end: 60), deviceID: nil, idempotencyKey: nil)
+        #expect(await eventually { launcher.processes.count > 6 })
+        #expect(await status(store, record.id) == .recording)
+        let stopped = try await scheduler.stop(record.id)
+        #expect(stopped.status == .completed)
+        #expect(stopped.failureReason == nil)
     }
 
     @Test func hlsExtensionMismatchTurnsOnTheRelaxedCheck() async throws {
@@ -180,9 +184,10 @@ struct SchedulerTests {
             .exitAfter(0.01, segments: 0, status: 8, stderr: "Option extension_picky not found.\n"),
             .runUntilSignalled(),
         ])
-        let (scheduler, store) = try makeScheduler(launcher: launcher)
-        let (record, _) = try await scheduler.create(request(start: 0, end: 1.2), deviceID: nil, idempotencyKey: nil)
-        #expect(await eventually { await status(store, record.id) == .completed })
+        let (scheduler, _) = try makeScheduler(launcher: launcher)
+        let (record, _) = try await scheduler.create(request(start: 0, end: 60), deviceID: nil, idempotencyKey: nil)
+        #expect(await eventually { launcher.processes.count >= 3 })
+        #expect(try await scheduler.stop(record.id).status == .completed)
         // `.ts` URL: off at first, on after the mismatch, off again once ffmpeg refuses it.
         #expect(launcher.specs.prefix(3).map(\.hlsInput) == [false, true, false])
     }
