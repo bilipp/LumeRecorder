@@ -63,18 +63,18 @@ public enum RecorderRoutes {
         let authed = api.group().add(middleware: BearerAuthMiddleware(services: services))
         authed.get("recordings") { _, _ in
             let records = await services.store.recordings()
-            return try JSONResponse.make(records.map { publicRecording($0, services: services) })
+            return try await JSONResponse.make(publicRecordings(records, services: services))
         }
         authed.post("recordings") { request, context in
             let body = try await request.decode(as: CreateRecordingRequest.self, context: context)
             let key = request.headers[idempotencyHeader]
             let (record, created) = try await services.scheduler.create(body, deviceID: context.device?.id, idempotencyKey: key)
-            return try JSONResponse.make(publicRecording(record, services: services), status: created ? .created : .ok)
+            return try await JSONResponse.make(publicRecording(record, services: services), status: created ? .created : .ok)
         }
         authed.post("recordings/:id/stop") { _, context in
             let id = try recordingID(context)
             let record = try await services.scheduler.stop(id)
-            return try JSONResponse.make(publicRecording(record, services: services))
+            return try await JSONResponse.make(publicRecording(record, services: services))
         }
         authed.delete("recordings/:id") { _, context in
             try await services.scheduler.delete(recordingID(context))
@@ -213,10 +213,38 @@ public enum RecorderRoutes {
         return id
     }
 
-    /// Live recordings report stats read from disk; finished ones use the cache.
-    static func publicRecording(_ record: RecordingRecord, services: RecorderServices) -> Recording {
+    /// Live recordings report stats read from disk via the coalescing live stats coordinator;
+    /// finished ones use the cached statistics in the store.
+    static func publicRecording(_ record: RecordingRecord, services: RecorderServices) async -> Recording {
+        guard record.status == .recording else { return record.publicRecording() }
+        let stats = await services.liveStats.stats(for: record.id, in: services.store.mediaDirectory(for: record.id))
+        return record.publicRecording(media: stats)
+    }
+
+    /// Synchronous fallback when direct inspection is needed without coordination.
+    static func publicRecordingSync(_ record: RecordingRecord, services: RecorderServices) -> Recording {
         guard record.status == .recording else { return record.publicRecording() }
         return record.publicRecording(media: MediaInspector.stats(in: services.store.mediaDirectory(for: record.id)))
+    }
+
+    /// Resolves all records into public DTOs, coalescing live media stats queries concurrently.
+    static func publicRecordings(_ records: [RecordingRecord], services: RecorderServices) async -> [Recording] {
+        guard records.contains(where: { $0.status == .recording }) else {
+            return records.map { $0.publicRecording() }
+        }
+        return await withTaskGroup(of: (Int, Recording).self) { group in
+            for (index, record) in records.enumerated() {
+                group.addTask {
+                    let pub = await publicRecording(record, services: services)
+                    return (index, pub)
+                }
+            }
+            var output = [Recording?](repeating: nil, count: records.count)
+            for await (index, pub) in group {
+                output[index] = pub
+            }
+            return output.compactMap { $0 }
+        }
     }
 
     /// `scheme://host[:port]` the client used, so the link is reachable from

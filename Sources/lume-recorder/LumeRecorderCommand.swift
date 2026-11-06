@@ -32,6 +32,7 @@ struct Serve: AsyncParsableCommand {
         name: .customLong("single-file-recordings"),
         help: "Merge each finished recording into one recording.ts (env SINGLE_FILE_RECORDINGS=1)."
     ) var singleFileRecordings = false
+    @Option(name: .customLong("live-stats-freshness"), help: "Live stats cache freshness in seconds (env LIVE_STATS_FRESHNESS, default 2.0).") var liveStatsFreshness: Double?
 
     func run() async throws {
         var config = RecorderConfig.fromEnvironment()
@@ -51,6 +52,7 @@ struct Serve: AsyncParsableCommand {
         }
         if noBonjour { config.bonjourEnabled = false }
         if singleFileRecordings { config.singleFileRecordings = true }
+        if let liveStatsFreshness { config.liveStatsFreshness = liveStatsFreshness }
         guard config.maxConcurrent >= 1 else { throw ValidationError("max-concurrent must be at least 1") }
 
         let level = config.logLevel
