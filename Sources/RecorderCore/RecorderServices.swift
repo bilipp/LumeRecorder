@@ -9,6 +9,7 @@ public struct RecorderServices: Sendable {
     public let scheduler: RecordingScheduler
     public let pairing: PairingManager
     public let signer: PlaybackSigner
+    public let liveStats: LiveStatsCoordinator
     public let now: NowProvider
     public let logger: Logger
 
@@ -16,6 +17,7 @@ public struct RecorderServices: Sendable {
         config: RecorderConfig,
         launcher: any RecordingProcessLauncher,
         disk: any DiskSpaceProviding = FileSystemDiskSpace(),
+        liveStats: LiveStatsCoordinator? = nil,
         now: @escaping NowProvider = { Date() },
         logger: Logger = Logger(label: "lume-recorder"),
         configureScheduler: (inout RecordingScheduler.Options) -> Void = { _ in }
@@ -29,10 +31,23 @@ public struct RecorderServices: Sendable {
             throw RecorderError.invalidRequest("server.json holds an invalid playback secret")
         }
         self.signer = signer
+        let statsCoordinator = liveStats ?? LiveStatsCoordinator(
+            freshness: config.liveStatsFreshness,
+            now: now
+        )
+        self.liveStats = statsCoordinator
         var options = RecordingScheduler.Options(maxConcurrent: config.maxConcurrent, minFreeBytes: config.minFreeBytes)
         options.singleFileRecordings = config.singleFileRecordings
         configureScheduler(&options)
-        scheduler = RecordingScheduler(store: store, launcher: launcher, options: options, disk: disk, now: now, logger: logger)
+        scheduler = RecordingScheduler(
+            store: store,
+            launcher: launcher,
+            options: options,
+            disk: disk,
+            liveStats: statsCoordinator,
+            now: now,
+            logger: logger
+        )
         pairing = PairingManager(directory: config.dataDirectory, now: now, logger: logger)
     }
 

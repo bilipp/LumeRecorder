@@ -37,6 +37,8 @@ public struct RecorderConfig: Sendable {
     public var singleFileRecordings: Bool
     /// Lifetime of playback grants.
     public var playbackGrantLifetime: TimeInterval = 12 * 3600
+    /// `LIVE_STATS_FRESHNESS` — maximum age of cached stats for active recordings in seconds.
+    public var liveStatsFreshness: TimeInterval = 2.0
 
     public init(
         host: String = "0.0.0.0",
@@ -49,7 +51,8 @@ public struct RecorderConfig: Sendable {
         ffmpegPath: String = "ffmpeg",
         logLevel: Logger.Level = .info,
         bonjourEnabled: Bool = true,
-        singleFileRecordings: Bool = false
+        singleFileRecordings: Bool = false,
+        liveStatsFreshness: TimeInterval = 2.0
     ) {
         self.host = host
         self.port = port
@@ -62,6 +65,7 @@ public struct RecorderConfig: Sendable {
         self.logLevel = logLevel
         self.bonjourEnabled = bonjourEnabled
         self.singleFileRecordings = singleFileRecordings
+        self.liveStatsFreshness = liveStatsFreshness
     }
 
     /// Builds a config from environment variables, falling back to defaults.
@@ -83,6 +87,9 @@ public struct RecorderConfig: Sendable {
         if let bonjour = value("BONJOUR") { config.bonjourEnabled = !["0", "false", "no", "off"].contains(bonjour.lowercased()) }
         if let single = value("SINGLE_FILE_RECORDINGS") {
             config.singleFileRecordings = ["1", "true", "yes", "on"].contains(single.lowercased())
+        }
+        if let liveFreshness = value("LIVE_STATS_FRESHNESS").flatMap(Double.init) {
+            config.liveStatsFreshness = liveFreshness
         }
         return config
     }

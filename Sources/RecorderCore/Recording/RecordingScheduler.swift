@@ -83,6 +83,7 @@ public actor RecordingScheduler: Service {
     }
 
     public nonisolated let options: Options
+    public let liveStats: LiveStatsCoordinator?
     private let store: RecorderStore
     private let launcher: any RecordingProcessLauncher
     private let disk: any DiskSpaceProviding
@@ -101,6 +102,7 @@ public actor RecordingScheduler: Service {
         launcher: any RecordingProcessLauncher,
         options: Options,
         disk: any DiskSpaceProviding = FileSystemDiskSpace(),
+        liveStats: LiveStatsCoordinator? = nil,
         now: @escaping NowProvider = { Date() },
         logger: Logger = Logger(label: "lume-recorder.scheduler")
     ) {
@@ -108,6 +110,7 @@ public actor RecordingScheduler: Service {
         self.launcher = launcher
         self.options = options
         self.disk = disk
+        self.liveStats = liveStats
         self.now = now
         self.logger = logger
     }
@@ -243,6 +246,7 @@ public actor RecordingScheduler: Service {
                 job.task?.cancel()
             }
             await job.task?.value
+            await liveStats?.invalidate(id)
             logger.info("Recording \(id) stopped on request")
             return await store.recording(id) ?? record
         }
@@ -262,6 +266,7 @@ public actor RecordingScheduler: Service {
             await job.task?.value
             jobs[id] = nil
         }
+        await liveStats?.invalidate(id)
         try? FileManager.default.removeItem(at: store.mediaDirectory(for: id))
         try await store.removeRecording(id)
         if let key = record.idempotencyKey, let device = record.createdByDeviceID {
@@ -289,6 +294,12 @@ public actor RecordingScheduler: Service {
             await job.task?.value
         }
         jobs.removeAll()
+        await liveStats?.reset()
+    }
+
+    /// Invalidate cached live statistics for a recording (e.g. after appending media).
+    public func invalidateLiveStats(_ id: UUID) async {
+        await liveStats?.invalidate(id)
     }
 
     // MARK: Queries
@@ -369,6 +380,9 @@ public actor RecordingScheduler: Service {
 
             let attempt = record.attempts + 1
             _ = try? await store.update(id) { $0.attempts = attempt }
+            if attempt > 1 {
+                await liveStats?.invalidate(id)
+            }
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let spec = RecordingAttemptSpec(
                 recordingID: id,
@@ -442,6 +456,7 @@ public actor RecordingScheduler: Service {
             }
             let delay = min(backoff, timeLeft)
             logger.warning("Recording \(id) source ended early; retrying in \(Int(delay.rounded())) s")
+            await liveStats?.invalidate(id)
             do {
                 try await Task.sleep(for: .seconds(delay))
             } catch {
@@ -478,6 +493,7 @@ public actor RecordingScheduler: Service {
         }
         let stats = MediaInspector.stats(in: directory)
         let current = now()
+        await liveStats?.invalidate(id)
         if stats.segmentCount > 0 {
             _ = try? await store.update(id) {
                 $0.status = .completed
